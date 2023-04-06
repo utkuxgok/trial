@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/adshao/go-binance/v2"
 	"github.com/redis/go-redis"
 	"os"
@@ -36,25 +37,34 @@ const (
 	DepthCacheMaxSize = 100000
 )
 
-func NewCache() *Cache {
+// NewCache creates a new Cache instance with a Redis client.
+func NewCache() (*Cache, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDIS_ADDR"),
 		Password: os.Getenv("REDIS_PASS"),
 		DB:       0,
 	})
 
+	_, err := rdb.Ping().Result()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Cache{
 		client: rdb,
-	}
+	}, nil
 }
 
 func (c *Cache) Set(key string, value interface{}, expiration time.Duration) error {
+	if value == nil {
+		return errors.New("value cannot be nil")
+	}
+
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 
-	// Use a Redis pipeline to optimize I/O
 	pipe := c.client.Pipeline()
 	pipe.Set(key, data, expiration)
 	pipe.LPush(key+":list", data)
